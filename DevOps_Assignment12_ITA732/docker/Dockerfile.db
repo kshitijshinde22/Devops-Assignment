@@ -1,0 +1,2 @@
+FROM postgres:14
+# Use official Postgres image. Add init scripts into /docker-entrypoint-initdb.d if needed.

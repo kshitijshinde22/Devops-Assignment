@@ -1,0 +1,49 @@
+---
+- name: Update apt and install dependencies
+  become: yes
+  apt:
+    update_cache: yes
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - python3-pip
+    state: present
+
+- name: Add Docker official GPG key
+  become: yes
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker apt repository
+  become: yes
+  apt_repository:
+    repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+    state: present
+
+- name: Install Docker Engine
+  become: yes
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    update_cache: yes
+    state: present
+
+- name: Install pip docker module and docker-compose plugin dependencies
+  become: yes
+  pip:
+    name:
+      - docker
+      - docker-compose
+
+- name: Add ubuntu user to docker group
+  become: yes
+  user:
+    name: ubuntu
+    groups: docker
+    append: yes

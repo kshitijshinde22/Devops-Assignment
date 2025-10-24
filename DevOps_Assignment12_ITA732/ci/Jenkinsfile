@@ -1,0 +1,22 @@
+pipeline {
+  agent any
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    stage('Terraform Apply') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh 'cd terraform && terraform init && terraform apply -auto-approve'
+        }
+      }
+    }
+    stage('Run Ansible') {
+      steps {
+        sh 'ansible-playbook ansible/playbook.yml -i ansible/inventory.ini --private-key=terraform/terraform-key.pem'
+      }
+    }
+  }
+}
