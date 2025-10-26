@@ -1,0 +1,79 @@
+---
+- name: Configure all nodes - install docker & tools
+  hosts: all
+  become: yes
+  roles:
+    - docker-install
+
+- name: Initialize Swarm on manager and join workers
+  hosts: manager
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: Get manager IP
+      command: hostname -I
+      register: manager_ip_raw
+
+    - name: Set manager_ip fact
+      set_fact:
+        manager_ip: "{{ manager_ip_raw.stdout_lines[0].split(' ')[0] }}"
+
+    - name: Initialize docker swarm
+      shell: |
+        docker swarm init --advertise-addr {{ manager_ip }} || true
+      register: swarm_init
+      changed_when: "'This node is already part of a swarm' not in swarm_init.stdout"
+
+    - name: Get worker join token
+      shell: docker swarm join-token -q worker
+      register: worker_token
+
+    - name: Debug token
+      debug:
+        var: worker_token.stdout
+
+    - name: Create join command file
+      copy:
+        dest: /tmp/worker_join.sh
+        content: |
+          #!/bin/bash
+          docker swarm join --token {{ worker_token.stdout }} {{ manager_ip }}:2377
+      mode: '0755'
+
+- name: Join workers to swarm
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Fetch join script from manager
+      fetch:
+        src: /tmp/worker_join.sh
+        dest: /tmp/worker_join.sh
+        flat: yes
+      delegate_to: "{{ groups['manager'][0] }}"
+
+    - name: Run join script
+      shell: bash /tmp/worker_join.sh
+      register: join_result
+      failed_when: join_result.rc != 0 and 'This node is already part of a swarm' not in join_result.stderr
+
+- name: Deploy stack using docker-compose (manager)
+  hosts: manager
+  become: yes
+  tasks:
+    - name: Copy docker-compose.yml to manager
+      copy:
+        src: ../docker/docker-compose.yml
+        dest: /home/ubuntu/docker-compose.yml
+        mode: '0644'
+
+    - name: Copy project docker files (web image context)
+      synchronize:
+        src: ../django_app/
+        dest: /home/ubuntu/django_app/
+        rsync_opts:
+          - "--exclude=.git"
+
+    - name: Deploy stack
+      shell: docker stack deploy -c /home/ubuntu/docker-compose.yml myapp
+      args:
+        chdir: /home/ubuntu
